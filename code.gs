@@ -98,15 +98,23 @@ function getDashboardData() {
       stats: _calcularStatsGerais(projesp)
     };
 
+    const responseSerializavel = _toSerializable_(response);
     Logger.log(`[getDashboardData] SUCESSO projesp=${response.projesp.length}, mov=${response.movimentacoes.length}, historico=${response.historico.length}, tendencias=${response.tendencias.length}, alertas=${response.alertas.length}`);
     console.log(`[getDashboardData] SUCESSO projesp=${response.projesp.length}, mov=${response.movimentacoes.length}, historico=${response.historico.length}, tendencias=${response.tendencias.length}, alertas=${response.alertas.length}`);
-    return response;
+    Logger.log(`[getDashboardData] serializado bytes=${JSON.stringify(responseSerializavel).length}`);
+    console.log(`[getDashboardData] serializado bytes=${JSON.stringify(responseSerializavel).length}`);
+    return responseSerializavel;
   } catch (e) {
     Logger.log(`[getDashboardData] ERRO ${e}`);
     console.error(`[getDashboardData] ERRO ${e}`);
     _logEvent('ERROR', 'getDashboardData', { error: e.toString() });
     return { error: e.toString() };
   }
+}
+
+function getDashboardDataSerialized() {
+  const data = getDashboardData();
+  return JSON.stringify(_toSerializable_(data));
 }
 
 function registrarSaida(codigo_ax, quantidade) {
@@ -502,6 +510,14 @@ function _readSheet(sheet) {
     headers.forEach((h, i) => { obj[h] = row[i]; });
     return obj;
   });
+}
+
+function _toSerializable_(value) {
+  return JSON.parse(JSON.stringify(value, function (_k, v) {
+    if (v instanceof Date) return v.toISOString();
+    if (typeof v === 'number' && !isFinite(v)) return null;
+    return v;
+  }));
 }
 
 function _getLatestSnapshotsByCodigo(snaps) {

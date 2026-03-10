@@ -537,6 +537,27 @@
                         .withSuccessHandler((payload) => {
                             console.log('[frontend] fetchData withSuccessHandler payload', payload);
                             try {
+                                if (payload === null) {
+                                    console.warn('[frontend] payload nulo, tentando fallback serializado');
+                                    google.script.run
+                                        .withSuccessHandler((serialized) => {
+                                            try {
+                                                const parsed = JSON.parse(serialized || '{}');
+                                                console.log('[frontend] fallback serializado sucesso', parsed);
+                                                applyDashboardData(parsed);
+                                                loading.value = false;
+                                                showToast('Dados sincronizados com fallback serializado.');
+                                            } catch (err) {
+                                                handleFailure(err, 'Falha ao aplicar fallback serializado.');
+                                            }
+                                        })
+                                        .withFailureHandler((err) => {
+                                            console.error('[frontend] fallback serializado erro', err);
+                                            handleFailure(err, 'Erro no fallback serializado.');
+                                        })
+                                        .getDashboardDataSerialized();
+                                    return;
+                                }
                                 applyDashboardData(payload);
                                 loading.value = false;
                                 showToast('Dados sincronizados com o Google Sheets.');

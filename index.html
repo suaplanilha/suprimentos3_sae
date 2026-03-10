@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAP Suprimentos Pro - SAE</title>
+    <!-- Vue 3 & Tailwind -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Icons & Fonts -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --glass-bg: rgba(15, 23, 42, 0.9);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --accent: #3b82f6;
+            --danger: #ef4444;
+            --success: #10b981;
+        }
+        body {
+            background: radial-gradient(circle at top right, #1e293b, #0f172a);
+            color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        .glass-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 10px 40px -10px rgba(0,0,0,0.5);
+        }
+        .sidebar-item {
+            @apply flex items-center p-3 rounded-xl transition-all duration-200 cursor-pointer text-slate-400 hover:bg-white/5;
+        }
+        .sidebar-item.active {
+            @apply bg-blue-600/10 text-blue-400 border-r-4 border-blue-500 rounded-r-none;
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        
+        /* Table styles */
+        th { @apply text-[10px] uppercase tracking-widest text-slate-500 p-4 font-bold; }
+        td { @apply p-4 text-sm border-t border-slate-800/50; }
+        
+        .kpi-card { @apply glass-card p-5 rounded-2xl border-l-4; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+        @keyframes pulse-blue {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .loading-dot { animation: pulse-blue 1.5s infinite; }
+    </style>
+</head>
+<body>
+    <div id="app" class="flex h-screen overflow-hidden">
+        
+        <!-- SIDEBAR -->
+        <aside class="w-72 glass-card border-r flex flex-col hidden lg:flex">
+            <div class="p-8">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-700 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+                        <i data-lucide="package" class="text-white w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-extrabold text-xl tracking-tighter leading-none">SAP SUP</h1>
+                        <span class="text-[10px] text-slate-500 uppercase tracking-[0.2em]">Apollo v2.5</span>
+                    </div>
+                </div>
+            </div>
+
+            <nav class="flex-1 px-4 space-y-2">
+                <div @click="currentTab = 'corrente'" :class="['sidebar-item', currentTab === 'corrente' ? 'active' : '']">
+                    <i data-lucide="layout-dashboard" class="w-5 h-5 mr-3"></i>
+                    <span class="font-semibold text-sm">Dashboard Corrente</span>
+                </div>
+                <div @click="currentTab = 'historico'" :class="['sidebar-item', currentTab === 'historico' ? 'active' : '']">
+                    <i data-lucide="history" class="w-5 h-5 mr-3"></i>
+                    <span class="font-semibold text-sm">Histórico Mensal</span>
+                </div>
+                <div @click="currentTab = 'movimentacao'" :class="['sidebar-item', currentTab === 'movimentacao' ? 'active' : '']">
+                    <i data-lucide="activity" class="w-5 h-5 mr-3"></i>
+                    <span class="font-semibold text-sm">Movimentação Real</span>
+                </div>
+                <div @click="currentTab = 'lancamentos'" :class="['sidebar-item', currentTab === 'lancamentos' ? 'active' : '']">
+                    <i data-lucide="plus-circle" class="w-5 h-5 mr-3"></i>
+                    <span class="font-semibold text-sm">Novos Lançamentos</span>
+                </div>
+            </nav>
+
+            <div class="p-6 border-t border-slate-800">
+                <div class="flex items-center gap-3 p-3 bg-slate-900/50 rounded-2xl border border-white/5">
+                    <div class="w-10 h-10 rounded-full bg-slate-800 border-2 border-emerald-500 flex items-center justify-center text-xs font-bold text-emerald-500">GA</div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-bold truncate">Gestor Almoxarifado</p>
+                        <p class="text-[10px] text-slate-500 truncate">almoxarifado@empresa.com</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- MAIN -->
+        <main class="flex-1 flex flex-col relative overflow-hidden">
+            
+            <!-- HEADER -->
+            <header class="h-20 glass-card border-b flex items-center justify-between px-10 z-20">
+                <div class="flex items-center gap-4">
+                    <h2 class="text-sm font-bold uppercase tracking-widest text-slate-400 italic">{{ tabTitle }}</h2>
+                </div>
+                <div class="flex items-center gap-6">
+                    <div class="text-right">
+                        <p class="text-[10px] text-slate-500 uppercase font-black">Sincronização</p>
+                        <p class="text-xs font-mono text-emerald-400">Online • GAS Connected</p>
+                    </div>
+                    <button @click="fetchData" class="p-3 hover:bg-white/5 rounded-full transition-all active:scale-90">
+                        <i data-lucide="refresh-cw" :class="['w-5 h-5', loading ? 'animate-spin text-blue-500' : 'text-slate-400']"></i>
+                    </button>
+                </div>
+            </header>
+
+            <!-- CONTENT AREA -->
+            <div class="flex-1 overflow-y-auto p-10 custom-scrollbar">
+                
+                <!-- TAB: ANO CORRENTE -->
+                <section v-if="currentTab === 'corrente'" class="space-y-8">
+                    <!-- KPIs -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        <div class="kpi-card border-blue-500">
+                            <p class="text-[10px] text-slate-500 uppercase font-bold">Saída Média Diária (Ano)</p>
+                            <h3 class="text-3xl font-black mt-1">{{ stats.mediaDiaria }} <small class="text-xs font-normal text-slate-500">un</small></h3>
+                        </div>
+                        <div class="kpi-card border-indigo-500">
+                            <p class="text-[10px] text-slate-500 uppercase font-bold">Consumo Médio Mensal</p>
+                            <h3 class="text-3xl font-black mt-1">{{ stats.mediaMensal }} <small class="text-xs font-normal text-slate-500">un</small></h3>
+                        </div>
+                        <div class="kpi-card border-amber-500">
+                            <p class="text-[10px] text-slate-500 uppercase font-bold">Itens p/ Ressuprimento</p>
+                            <h3 class="text-3xl font-black mt-1 text-amber-400">{{ stats.itensRessuprir }}</h3>
+                        </div>
+                        <div class="kpi-card border-emerald-500">
+                            <p class="text-[10px] text-slate-500 uppercase font-bold">Volume Total Anual Est.</p>
+                            <h3 class="text-3xl font-black mt-1">{{ stats.totalAnual }} <small class="text-xs font-normal text-slate-500">un</small></h3>
+                        </div>
+                    </div>
+
+                    <!-- PROJEÇÃO DE REPOSIÇÃO -->
+                    <div class="glass-card rounded-3xl overflow-hidden border-t-2 border-blue-500/30">
+                        <div class="p-6 border-b border-slate-800 bg-slate-900/40 flex items-center justify-between">
+                            <h3 class="text-sm font-black italic flex items-center gap-2">
+                                <i data-lucide="timer" class="w-4 h-4 text-blue-500"></i>
+                                PROJEÇÃO DE TEMPO PARA REPOSIÇÃO (BASE MÉDIA OPERACIONAL)
+                            </h3>
+                        </div>
+                        <table class="w-full text-left">
+                            <thead>
+                                <tr>
+                                    <th>Código AX</th>
+                                    <th>Descrição Insumo</th>
+                                    <th class="text-center">Saldo Atual</th>
+                                    <th class="text-center">Consumo Dia (Médio)</th>
+                                    <th class="text-center">Cobertura</th>
+                                    <th class="text-center">Data Estimada</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-800/50">
+                                <tr v-for="item in projesp" :key="item.uuid" class="hover:bg-white/5 transition-colors group">
+                                    <td class="font-mono text-blue-400 font-bold tracking-tighter">{{ item.codigo_ax }}</td>
+                                    <td class="font-semibold uppercase text-slate-200">{{ item.descricao }}</td>
+                                    <td class="text-center font-bold">{{ item.saldo }}</td>
+                                    <td class="text-center text-slate-400 font-mono">{{ item.media_dia }}</td>
+                                    <td class="text-center">
+                                        <div :class="['px-3 py-1 rounded-full text-[11px] font-black inline-block', getStatusColor(item.dias)]">
+                                            {{ item.dias }} DIAS
+                                        </div>
+                                    </td>
+                                    <td class="text-center font-mono text-xs text-slate-400">{{ item.data_prevista }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- TAB: HISTÓRICO MENSAL -->
+                <section v-if="currentTab === 'historico'" class="space-y-6">
+                    <div class="glass-card p-6 rounded-3xl flex flex-wrap gap-6 items-end">
+                        <div class="flex-1 min-w-[300px]">
+                            <label class="text-[10px] uppercase font-bold text-slate-500 mb-2 block">Selecionar Insumo para Detalhamento KPI</label>
+                            <select v-model="histFilter.insumo" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                                <option value="">Todos os Insumos</option>
+                                <option v-for="ins in insumos" :value="ins.codigo_ax">{{ ins.codigo_ax }} - {{ ins.descricao }}</option>
+                            </select>
+                        </div>
+                        <div class="w-40">
+                            <label class="text-[10px] uppercase font-bold text-slate-500 mb-2 block">Ano Base</label>
+                            <select v-model="histFilter.ano" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm outline-none">
+                                <option value="2026">2026</option>
+                                <option value="2025">2025</option>
+                                <option value="2024">2024</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- COMPARATIVO ANUAL -->
+                    <div class="glass-card rounded-3xl overflow-hidden">
+                        <div class="p-6 border-b border-slate-800 flex justify-between items-center">
+                            <h3 class="text-sm font-black italic">COMPARATIVO RETROATIVO POSICIONAMENTO MENSAL</h3>
+                            <span class="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-1 rounded-lg font-bold">VALORES EM {{ histFilter.ano }}</span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-xs">
+                                <thead class="bg-slate-900/50">
+                                    <tr>
+                                        <th class="sticky left-0 bg-slate-900 z-10 p-4">Insumo / Mês</th>
+                                        <th v-for="m in meses" class="text-center p-2">{{ m }}</th>
+                                        <th class="p-4 text-right bg-blue-500/10">Média Ano</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="row in filteredHistorico" :key="row.codigo" class="hover:bg-white/5">
+                                        <td class="sticky left-0 bg-slate-900/90 backdrop-blur-md p-4">
+                                            <p class="font-bold text-blue-400">{{ row.codigo }}</p>
+                                            <p class="text-[9px] text-slate-500 truncate w-40">{{ row.descricao }}</p>
+                                        </td>
+                                        <td v-for="(v, i) in row.meses" :key="i" class="text-center p-2 text-slate-400 font-mono">
+                                            {{ v.toLocaleString() }}
+                                        </td>
+                                        <td class="p-4 text-right font-black text-blue-400 bg-blue-500/5">{{ row.media.toLocaleString() }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB: MOVIMENTAÇÃO REAL -->
+                <section v-if="currentTab === 'movimentacao'" class="space-y-4">
+                    <div class="glass-card rounded-3xl overflow-hidden">
+                        <div class="p-6 border-b border-slate-800 bg-slate-900/40 flex justify-between items-center">
+                            <h3 class="text-sm font-black italic flex items-center gap-2">
+                                <i data-lucide="list" class="w-4 h-4 text-emerald-500"></i>
+                                HISTÓRICO DE MOVIMENTAÇÃO OPERACIONAL
+                            </h3>
+                            <div class="relative w-64">
+                                <input type="text" placeholder="Buscar código/descrição..." class="w-full bg-slate-900 border border-slate-800 rounded-full py-2 pl-10 pr-4 text-xs outline-none focus:ring-1 focus:ring-emerald-500">
+                                <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-slate-500"></i>
+                            </div>
+                        </div>
+                        <table class="w-full text-left text-[11px]">
+                            <thead>
+                                <tr>
+                                    <th>Data Ref.</th>
+                                    <th>Código</th>
+                                    <th>Descrição</th>
+                                    <th class="text-center">Ponto Ressup.</th>
+                                    <th class="text-center">Saldo Anterior</th>
+                                    <th class="text-center">Saída</th>
+                                    <th class="text-center">Saldo Hoje</th>
+                                    <th class="text-center">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody class="font-mono divide-y divide-slate-800/50">
+                                <tr v-for="mov in movimentos" :key="mov.uuid" class="hover:bg-emerald-500/5 transition-colors">
+                                    <td class="text-slate-500">{{ mov.data }}</td>
+                                    <td class="font-bold text-blue-400">{{ mov.codigo_ax }}</td>
+                                    <td class="text-slate-200 uppercase whitespace-nowrap">{{ mov.descricao }}</td>
+                                    <td class="text-center text-slate-600">{{ mov.ponto }}</td>
+                                    <td class="text-center text-slate-500">{{ mov.anterior }}</td>
+                                    <td class="text-center font-black text-red-500">-{{ mov.saida }}</td>
+                                    <td class="text-center font-black text-emerald-400">{{ mov.atual }}</td>
+                                    <td class="text-center">
+                                        <span :class="['px-2 py-0.5 rounded-md font-bold text-[9px]', mov.atual <= mov.ponto ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400']">
+                                            {{ mov.atual <= mov.ponto ? 'REPOR' : 'OK' }}
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- TAB: LANÇAMENTOS -->
+                <section v-if="currentTab === 'lancamentos'" class="max-w-5xl mx-auto space-y-8">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        
+                        <!-- Manual -->
+                        <div class="glass-card p-8 rounded-3xl border-t-4 border-blue-500">
+                            <div class="flex items-center gap-3 mb-8">
+                                <div class="p-3 bg-blue-500/20 rounded-2xl">
+                                    <i data-lucide="edit-3" class="text-blue-500 w-6 h-6"></i>
+                                </div>
+                                <h3 class="text-xl font-black">Lançamento Individual</h3>
+                            </div>
+                            <div class="space-y-5">
+                                <div>
+                                    <label class="text-[10px] uppercase font-bold text-slate-500 mb-2 block">Código AX do Insumo</label>
+                                    <input v-model="form.codigo" type="text" placeholder="Ex: 43860" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] uppercase font-bold text-slate-500 mb-2 block">Quantidade Saída (Unidade)</label>
+                                    <input v-model="form.qtd" type="number" placeholder="0.00" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+                                </div>
+                                <button @click="submitManual" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-blue-900/30 active:scale-95">
+                                    CONFIRMAR SAÍDA
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Massa -->
+                        <div class="glass-card p-8 rounded-3xl border-t-4 border-indigo-500">
+                            <div class="flex items-center gap-3 mb-8">
+                                <div class="p-3 bg-indigo-500/20 rounded-2xl">
+                                    <i data-lucide="layers" class="text-indigo-500 w-6 h-6"></i>
+                                </div>
+                                <h3 class="text-xl font-black">Carga em Massa (XLS/CSV)</h3>
+                            </div>
+                            <div 
+                                class="border-2 border-dashed border-slate-700 rounded-3xl p-10 flex flex-col items-center justify-center hover:bg-indigo-500/5 hover:border-indigo-500/50 transition-all cursor-pointer group"
+                                @click="$refs.fileInput.click()"
+                            >
+                                <input type="file" ref="fileInput" class="hidden" @change="handleBulkUpload">
+                                <div class="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                    <i data-lucide="upload-cloud" class="w-10 h-10 text-indigo-400"></i>
+                                </div>
+                                <p class="text-sm font-bold text-slate-300">Arraste ou clique para selecionar</p>
+                                <p class="text-[10px] text-slate-500 mt-2 uppercase tracking-widest">Colunas esperadas: codigo_ax, quantidade</p>
+                            </div>
+                            <div class="mt-6 p-4 bg-slate-900/80 rounded-2xl border border-white/5">
+                                <div class="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase mb-2">
+                                    <span>Status de Upload</span>
+                                    <span>{{ uploadProgress }}%</span>
+                                </div>
+                                <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                    <div class="h-full bg-indigo-500 transition-all duration-500" :style="{ width: uploadProgress + '%' }"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+
+            <!-- LOADING OVERLAY -->
+            <transition name="fade">
+                <div v-if="loading" class="absolute inset-0 bg-slate-950/90 backdrop-blur-md z-[100] flex flex-col items-center justify-center">
+                    <div class="relative w-24 h-24 mb-6">
+                        <div class="absolute inset-0 border-4 border-blue-500/20 rounded-full"></div>
+                        <div class="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                    <p class="text-xs font-black uppercase tracking-[0.3em] text-blue-500 animate-pulse">Sincronizando Apollo Engine...</p>
+                </div>
+            </transition>
+
+            <!-- TOAST FEEDBACK -->
+            <transition name="fade">
+                <div v-if="toast" class="absolute bottom-10 right-10 glass-card px-6 py-4 rounded-2xl border-l-4 border-emerald-500 flex items-center gap-4 z-[200]">
+                    <i data-lucide="check-circle" class="text-emerald-500 w-5 h-5"></i>
+                    <p class="text-sm font-bold">{{ toastMsg }}</p>
+                </div>
+            </transition>
+
+        </main>
+    </div>
+
+    <!-- BACKEND MOCK / INTEGRATION -->
+    <script>
+        const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
+
+        createApp({
+            setup() {
+                const currentTab = ref('corrente');
+                const loading = ref(false);
+                const toast = ref(false);
+                const toastMsg = ref('');
+                const uploadProgress = ref(0);
+                
+                const form = ref({ codigo: '', qtd: null });
+                const histFilter = ref({ insumo: '', ano: '2026' });
+                
+                const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+                // DADOS REAIS / CALCULADOS
+                const insumos = ref([
+                    { codigo_ax: '43860', descricao: 'AMIDO DE MILHO REGULAR', ponto: 50000 },
+                    { codigo_ax: '121408', descricao: 'COLA PVA BRANCA PARA RESINADOS', ponto: 300 },
+                    { codigo_ax: '43870', descricao: 'SODA CAUSTICA', ponto: 2000 },
+                    { codigo_ax: '43990', descricao: 'FITA POLIPROPILENO', ponto: 200 }
+                ]);
+
+                const projesp = ref([
+                    { uuid: 1, codigo_ax: '43860', descricao: 'AMIDO DE MILHO REGULAR', saldo: 85000, media_dia: 2500, dias: 34, data_prevista: '12/04/2026' },
+                    { uuid: 2, codigo_ax: '121408', descricao: 'COLA PVA BRANCA PARA RESINADOS', saldo: 1200, media_dia: 300, dias: 4, data_prevista: '13/03/2026' },
+                    { uuid: 3, codigo_ax: '43870', descricao: 'SODA CAUSTICA', saldo: 2000, media_dia: 80, dias: 25, data_prevista: '03/04/2026' },
+                    { uuid: 4, codigo_ax: '43990', descricao: 'FITA POLIPROPILENO', saldo: 150, media_dia: 30, dias: 5, data_prevista: '14/03/2026' }
+                ]);
+
+                const movimentos = ref([
+                    { uuid: 101, data: '11/03/2026', codigo_ax: '117573', descricao: 'COLA PVA BRANCA RESINADA', ponto: 300, anterior: 1200, saida: 50, atual: 1150 },
+                    { uuid: 102, data: '12/03/2026', codigo_ax: '121408', descricao: 'COLA PVA BRANCA PARA RESINADOS', ponto: 300, anterior: 950, saida: 100, atual: 850 },
+                    { uuid: 103, data: '09/03/2026', codigo_ax: '43860', descricao: 'AMIDO DE MILHO REGULAR', ponto: 50000, anterior: 100000, saida: 5000, atual: 95000 }
+                ]);
+
+                const historicoRaw = ref([
+                    { codigo: '43860', descricao: 'AMIDO DE MILHO', ano: '2026', meses: [85000, 82000, 80000, 75000, 0, 0, 0, 0, 0, 0, 0, 0], media: 80500 },
+                    { codigo: '121408', descricao: 'COLA PVA', ano: '2026', meses: [1200, 1100, 1050, 900, 0, 0, 0, 0, 0, 0, 0, 0], media: 1060 },
+                    { codigo: '43860', descricao: 'AMIDO DE MILHO', ano: '2025', meses: [95000, 92000, 94000, 91000, 88000, 85000, 87000, 84000, 82000, 80000, 78000, 75000], media: 86000 }
+                ]);
+
+                const stats = ref({
+                    mediaDiaria: '2.84k',
+                    mediaMensal: '85.2k',
+                    itensRessuprir: 12,
+                    totalAnual: '1.02M'
+                });
+
+                // COMPUTED
+                const tabTitle = computed(() => {
+                    const map = {
+                        corrente: 'Dashboard de Operações Correntes',
+                        historico: 'Análise de Histórico Mensal',
+                        movimentacao: 'Fluxo de Movimentação Real-time',
+                        lancamentos: 'Painel de Inserção de Dados'
+                    };
+                    return map[currentTab.value];
+                });
+
+                const filteredHistorico = computed(() => {
+                    return historicoRaw.value.filter(h => {
+                        const matchesInsumo = histFilter.value.insumo ? h.codigo === histFilter.value.insumo : true;
+                        const matchesAno = h.ano === histFilter.value.ano;
+                        return matchesInsumo && matchesAno;
+                    });
+                });
+
+                // METHODS
+                const getStatusColor = (dias) => {
+                    if (dias <= 7) return 'bg-red-500/20 text-red-500';
+                    if (dias <= 15) return 'bg-amber-500/20 text-amber-500';
+                    return 'bg-emerald-500/20 text-emerald-500';
+                };
+
+                const fetchData = () => {
+                    loading.value = true;
+                    // Simula google.script.run.getDashboardData()
+                    setTimeout(() => {
+                        loading.value = false;
+                        showToast('Dados sincronizados com o Google Sheets');
+                    }, 1200);
+                };
+
+                const showToast = (msg) => {
+                    toastMsg.value = msg;
+                    toast.value = true;
+                    setTimeout(() => toast.value = false, 3000);
+                };
+
+                const submitManual = () => {
+                    if (!form.value.codigo || !form.value.qtd) return;
+                    loading.value = true;
+                    setTimeout(() => {
+                        loading.value = false;
+                        showToast(`Lançamento de ${form.value.qtd} un para ${form.value.codigo} efetuado.`);
+                        form.value = { codigo: '', qtd: null };
+                        fetchData();
+                    }, 1000);
+                };
+
+                const handleBulkUpload = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    loading.value = true;
+                    uploadProgress.value = 0;
+                    
+                    const interval = setInterval(() => {
+                        uploadProgress.value += 20;
+                        if (uploadProgress.value >= 100) {
+                            clearInterval(interval);
+                            loading.value = false;
+                            showToast('Carga em massa processada com sucesso.');
+                        }
+                    }, 400);
+                };
+
+                onMounted(() => {
+                    lucide.createIcons();
+                    fetchData();
+                });
+
+                watch(currentTab, () => {
+                    nextTick(() => lucide.createIcons());
+                });
+
+                return {
+                    currentTab, loading, toast, toastMsg, tabTitle, stats,
+                    insumos, projesp, movimentos, meses, histFilter, filteredHistorico,
+                    form, uploadProgress,
+                    getStatusColor, fetchData, submitManual, handleBulkUpload
+                };
+            }
+        }).mount('#app');
+
+        /** * CÉREBRO BACKEND (GAS) - Lógica de Sugestão
+         * * function getDashboardData() {
+         * const ss = SpreadsheetApp.getActiveSpreadsheet();
+         * const sheetInsumos = ss.getSheetByName('insumos');
+         * const sheetMov = ss.getSheetByName('movimentacao_apurada');
+         * * // 1. Calcular Média de Saída Real (últimos 90 dias)
+         * // 2. Pivotar Histórico para a aba de Posicionamento
+         * // 3. Gerar Projeção: dias_cobertura = saldo_atual / media_saida_diaria
+         * // 4. Retornar JSON para o Vue
+         * }
+         * * function processBulkInsert(payload) {
+         * // Recebe array de objetos {codigo_ax, quantidade}
+         * // Gera novo Snapshot para cada item
+         * // Trigger de Re-apuração automática
+         * }
+         */
+    </script>
+</body>
+</html>

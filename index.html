@@ -490,10 +490,12 @@
                 const handleFailure = (error, fallbackMsg) => {
                     loading.value = false;
                     const message = (error && error.message) ? error.message : String(error || fallbackMsg);
+                    console.error('[frontend] handleFailure', { fallbackMsg, error: message, raw: error });
                     showToast(message || fallbackMsg);
                 };
 
                 const applyDashboardData = (payload) => {
+                    console.log('[frontend] applyDashboardData payload recebido', payload);
                     if (!payload || payload.error) {
                         throw new Error(payload?.error || 'Falha ao carregar dashboard.');
                     }
@@ -509,10 +511,21 @@
                     if (historicoRaw.value.length > 0 && !historicoRaw.value.some(h => h.ano === histFilter.value.ano)) {
                         histFilter.value.ano = historicoRaw.value[0].ano;
                     }
+
+                    console.log('[frontend] applyDashboardData normalizado', {
+                        insumos: insumos.value.length,
+                        projesp: projesp.value.length,
+                        movimentos: movimentos.value.length,
+                        historico: historicoRaw.value.length,
+                        tendencias: tendencias.value.length,
+                        alertas: alertas.value.length,
+                        stats: stats.value
+                    });
                 };
 
                 const fetchData = () => {
                     loading.value = true;
+                    console.log('[frontend] fetchData INICIO');
 
                     if (typeof google === 'undefined' || !google.script || !google.script.run) {
                         loading.value = false;
@@ -522,6 +535,7 @@
 
                     google.script.run
                         .withSuccessHandler((payload) => {
+                            console.log('[frontend] fetchData withSuccessHandler payload', payload);
                             try {
                                 applyDashboardData(payload);
                                 loading.value = false;
@@ -530,7 +544,10 @@
                                 handleFailure(err, 'Falha ao aplicar dados do dashboard.');
                             }
                         })
-                        .withFailureHandler((err) => handleFailure(err, 'Erro ao consultar backend.'))
+                        .withFailureHandler((err) => {
+                            console.error('[frontend] fetchData withFailureHandler', err);
+                            handleFailure(err, 'Erro ao consultar backend.');
+                        })
                         .getDashboardData();
                 };
 
@@ -554,14 +571,19 @@
                     }
 
                     loading.value = true;
+                    console.log('[frontend] submitManual enviar', { codigo, qtd });
                     google.script.run
                         .withSuccessHandler((resp) => {
+                            console.log('[frontend] submitManual sucesso', resp);
                             loading.value = false;
                             showToast(resp?.message || `Saída registrada para ${codigo}.`);
                             form.value = { codigo: '', qtd: null };
                             fetchData();
                         })
-                        .withFailureHandler((err) => handleFailure(err, 'Erro ao registrar saída.'))
+                        .withFailureHandler((err) => {
+                            console.error('[frontend] submitManual erro', err);
+                            handleFailure(err, 'Erro ao registrar saída.');
+                        })
                         .registrarSaida(codigo, qtd);
                 };
 
@@ -583,6 +605,7 @@
                             const text = String(reader.result || '');
                             const lines = text.split(/\r?\n/).filter(Boolean);
                             const rows = [];
+                            console.log('[frontend] bulk arquivo lido', { lines: lines.length });
 
                             for (let i = 1; i < lines.length; i++) {
                                 const parts = lines[i].split(',');
@@ -590,17 +613,23 @@
                             }
 
                             uploadProgress.value = 60;
+                            console.log('[frontend] bulk linhas parseadas', { rows: rows.length, preview: rows.slice(0, 3) });
 
                             google.script.run
                                 .withSuccessHandler((resp) => {
+                                    console.log('[frontend] bulk sucesso', resp);
                                     uploadProgress.value = 100;
                                     loading.value = false;
                                     showToast(`Carga processada: ${resp.totalInserido} inseridos, ${resp.totalRejeitado} rejeitados.`);
                                     fetchData();
                                 })
-                                .withFailureHandler((err) => handleFailure(err, 'Erro ao processar carga em massa.'))
+                                .withFailureHandler((err) => {
+                                    console.error('[frontend] bulk erro', err);
+                                    handleFailure(err, 'Erro ao processar carga em massa.');
+                                })
                                 .processBulkInsert(rows);
                         } catch (err) {
+                            console.error('[frontend] bulk parse erro', err);
                             handleFailure(err, 'Falha ao interpretar CSV.');
                         }
                     };

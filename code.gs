@@ -25,6 +25,8 @@ function doGet() {
 
 function getDashboardData() {
   try {
+    Logger.log('[getDashboardData] INICIO');
+    console.log('[getDashboardData] INICIO');
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     _assertSchema(ss);
 
@@ -37,6 +39,9 @@ function getDashboardData() {
     const movRaw = _readSheet(sheetMov);
     const snapRaw = _readSheet(sheetSnapshot);
     const histRaw = _readSheet(sheetHist);
+
+    Logger.log(`[getDashboardData] contagens insumos=${insumosRaw.length}, mov=${movRaw.length}, snapshot=${snapRaw.length}, historico=${histRaw.length}`);
+    console.log(`[getDashboardData] contagens insumos=${insumosRaw.length}, mov=${movRaw.length}, snapshot=${snapRaw.length}, historico=${histRaw.length}`);
 
     const insumosByCodigo = {};
     insumosRaw.forEach(i => { insumosByCodigo[String(i.codigo_ax)] = i; });
@@ -83,7 +88,7 @@ function getDashboardData() {
       };
     });
 
-    return {
+    const response = {
       insumos: insumosRaw,
       projesp: projesp,
       movimentacoes: _formatarMovimentacoes(movRaw, snapshotsAtuais, insumosByCodigo).slice(0, 20),
@@ -92,26 +97,41 @@ function getDashboardData() {
       alertas: _gerarAlertas(projesp, 15),
       stats: _calcularStatsGerais(projesp)
     };
+
+    Logger.log(`[getDashboardData] SUCESSO projesp=${response.projesp.length}, mov=${response.movimentacoes.length}, historico=${response.historico.length}, tendencias=${response.tendencias.length}, alertas=${response.alertas.length}`);
+    console.log(`[getDashboardData] SUCESSO projesp=${response.projesp.length}, mov=${response.movimentacoes.length}, historico=${response.historico.length}, tendencias=${response.tendencias.length}, alertas=${response.alertas.length}`);
+    return response;
   } catch (e) {
+    Logger.log(`[getDashboardData] ERRO ${e}`);
+    console.error(`[getDashboardData] ERRO ${e}`);
     _logEvent('ERROR', 'getDashboardData', { error: e.toString() });
     return { error: e.toString() };
   }
 }
 
 function registrarSaida(codigo_ax, quantidade) {
+  Logger.log(`[registrarSaida] entrada codigo_ax=${codigo_ax}, quantidade=${quantidade}`);
+  console.log(`[registrarSaida] entrada codigo_ax=${codigo_ax}, quantidade=${quantidade}`);
   return _runWithDocumentLock_('registrarSaida', function () {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     _assertSchema(ss);
-    return _registrarSaidaSemLock_(ss, codigo_ax, quantidade, 'FECHAMENTO_DIARIO', 'WEBAPP', 'Lançamento via App');
+    const result = _registrarSaidaSemLock_(ss, codigo_ax, quantidade, 'FECHAMENTO_DIARIO', 'WEBAPP', 'Lançamento via App');
+    Logger.log(`[registrarSaida] sucesso codigo_ax=${codigo_ax}, novoSaldo=${result.novoSaldo}`);
+    console.log(`[registrarSaida] sucesso codigo_ax=${codigo_ax}, novoSaldo=${result.novoSaldo}`);
+    return result;
   });
 }
 
 function processBulkInsert(payload) {
+  Logger.log(`[processBulkInsert] entrada tipo=${Object.prototype.toString.call(payload)}`);
+  console.log(`[processBulkInsert] entrada tipo=${Object.prototype.toString.call(payload)}`);
   return _runWithDocumentLock_('processBulkInsert', function () {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     _assertSchema(ss);
 
     const rows = Array.isArray(payload) ? payload : [];
+    Logger.log(`[processBulkInsert] linhas recebidas=${rows.length}`);
+    console.log(`[processBulkInsert] linhas recebidas=${rows.length}`);
     const staging = _getOrCreateStagingSheet_(ss);
     const insumos = _readSheet(ss.getSheetByName('insumos'));
     const codigosValidos = new Set(insumos.map(i => String(i.codigo_ax)));
@@ -172,12 +192,17 @@ function processBulkInsert(payload) {
       rejeicoes: rejeicoes
     };
 
+    Logger.log(`[processBulkInsert] resultado inserido=${result.totalInserido}, rejeitado=${result.totalRejeitado}`);
+    console.log(`[processBulkInsert] resultado inserido=${result.totalInserido}, rejeitado=${result.totalRejeitado}`);
+
     _logEvent('INFO', 'processBulkInsert', result);
     return result;
   });
 }
 
 function executarFechamentoDiario() {
+  Logger.log('[executarFechamentoDiario] INICIO');
+  console.log('[executarFechamentoDiario] INICIO');
   return _runWithDocumentLock_('executarFechamentoDiario', function () {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     _assertSchema(ss);
@@ -187,6 +212,8 @@ function executarFechamentoDiario() {
 
     const snapshots = _readSheet(sheetSnap);
     const pendentes = snapshots.filter(s => String(s.status_apuracao || '').toUpperCase() === 'PENDENTE_APURACAO');
+    Logger.log(`[executarFechamentoDiario] snapshots=${snapshots.length}, pendentes=${pendentes.length}`);
+    console.log(`[executarFechamentoDiario] snapshots=${snapshots.length}, pendentes=${pendentes.length}`);
 
     if (pendentes.length === 0) {
       _logEvent('INFO', 'executarFechamentoDiario', { mensagem: 'Nenhum snapshot pendente para apuração.' });
@@ -225,6 +252,8 @@ function executarFechamentoDiario() {
     };
 
     _logEvent('INFO', 'executarFechamentoDiario', result);
+    Logger.log(`[executarFechamentoDiario] SUCESSO processados=${result.processados}`);
+    console.log(`[executarFechamentoDiario] SUCESSO processados=${result.processados}`);
     return result;
   });
 }
@@ -260,6 +289,8 @@ function removerGatilhoFechamentoDiario() {
 }
 
 function enviarAlertasAutomaticos(diasLimite, emailsCsv, webhookUrl) {
+  Logger.log(`[enviarAlertasAutomaticos] entrada diasLimite=${diasLimite}, emailsCsv=${emailsCsv ? 'SIM' : 'NAO'}, webhook=${webhookUrl ? 'SIM' : 'NAO'}`);
+  console.log(`[enviarAlertasAutomaticos] entrada diasLimite=${diasLimite}, emailsCsv=${emailsCsv ? 'SIM' : 'NAO'}, webhook=${webhookUrl ? 'SIM' : 'NAO'}`);
   return _runWithDocumentLock_('enviarAlertasAutomaticos', function () {
     const data = getDashboardData();
     if (data.error) throw new Error(data.error);
@@ -296,7 +327,10 @@ function enviarAlertasAutomaticos(diasLimite, emailsCsv, webhookUrl) {
       webhook: !!webhookUrl
     });
 
-    return { success: true, enviados: alertas.length, destinatarios: emails.length };
+    const result = { success: true, enviados: alertas.length, destinatarios: emails.length };
+    Logger.log(`[enviarAlertasAutomaticos] SUCESSO enviados=${result.enviados}, destinatarios=${result.destinatarios}`);
+    console.log(`[enviarAlertasAutomaticos] SUCESSO enviados=${result.enviados}, destinatarios=${result.destinatarios}`);
+    return result;
   });
 }
 
@@ -496,19 +530,33 @@ function _calcularMediasSaidaAvancada(movs, hist) {
   const now = new Date();
   const d30 = now.getTime() - (30 * 24 * 60 * 60 * 1000);
   const d90 = now.getTime() - (90 * 24 * 60 * 60 * 1000);
+  let ignoradosData = 0;
+  let ignoradosQtd = 0;
 
   movs.forEach(m => {
     if (String(m.tipo_movimento || '').toUpperCase() !== 'SAIDA') return;
     const codigo = String(m.codigo_ax || '').trim();
     if (!codigo) return;
     const ts = new Date(m.criado_em || m.data_movimento || 0).getTime();
-    if (!ts) return;
+    if (!ts) {
+      ignoradosData++;
+      return;
+    }
 
     if (!medias[codigo]) medias[codigo] = { total30: 0, total90: 0 };
     const qtd = parseFloat(m.quantidade_movimento || 0);
+    if (!Number.isFinite(qtd)) {
+      ignoradosQtd++;
+      return;
+    }
     if (ts >= d30) medias[codigo].total30 += qtd;
     if (ts >= d90) medias[codigo].total90 += qtd;
   });
+
+  if (ignoradosData > 0 || ignoradosQtd > 0) {
+    Logger.log(`[mediasSaidaAvancada] ignoradosData=${ignoradosData}, ignoradosQtd=${ignoradosQtd}`);
+    console.log(`[mediasSaidaAvancada] ignoradosData=${ignoradosData}, ignoradosQtd=${ignoradosQtd}`);
+  }
 
   Object.keys(medias).forEach(codigo => {
     medias[codigo].diaria30 = medias[codigo].total30 / 30;

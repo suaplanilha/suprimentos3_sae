@@ -90,6 +90,10 @@
                     <i data-lucide="plus-circle" class="w-5 h-5 mr-3"></i>
                     <span class="font-semibold text-sm">Novos Lançamentos</span>
                 </div>
+                <div @click="currentTab = 'tendencias'" :class="['sidebar-item', currentTab === 'tendencias' ? 'active' : '']">
+                    <i data-lucide="line-chart" class="w-5 h-5 mr-3"></i>
+                    <span class="font-semibold text-sm">Tendências & Alertas</span>
+                </div>
             </nav>
 
             <div class="p-6 border-t border-slate-800">
@@ -161,7 +165,11 @@
                                     <th>Código AX</th>
                                     <th>Descrição Insumo</th>
                                     <th class="text-center">Saldo Atual</th>
-                                    <th class="text-center">Consumo Dia (Médio)</th>
+                                    <th class="text-center">Média 30d</th>
+                                    <th class="text-center">Média 90d</th>
+                                    <th class="text-center">YoY Mês (%)</th>
+                                    <th class="text-center">Ponto Dinâmico</th>
+                                    <th class="text-center">ABC/Risco</th>
                                     <th class="text-center">Cobertura</th>
                                     <th class="text-center">Data Estimada</th>
                                 </tr>
@@ -171,7 +179,13 @@
                                     <td class="font-mono text-blue-400 font-bold tracking-tighter">{{ item.codigo_ax }}</td>
                                     <td class="font-semibold uppercase text-slate-200">{{ item.descricao }}</td>
                                     <td class="text-center font-bold">{{ item.saldo }}</td>
-                                    <td class="text-center text-slate-400 font-mono">{{ item.media_dia }}</td>
+                                    <td class="text-center text-slate-400 font-mono">{{ item.media_30_dias }}</td>
+                                    <td class="text-center text-slate-400 font-mono">{{ item.media_90_dias }}</td>
+                                    <td class="text-center font-mono" :class="item.yoy_percent >= 0 ? 'text-emerald-400' : 'text-red-400'">{{ item.yoy_percent }}%</td>
+                                    <td class="text-center font-bold text-indigo-300">{{ item.ponto_pedido_dinamico }}</td>
+                                    <td class="text-center text-[10px] uppercase">
+                                        <span class="px-2 py-1 rounded bg-slate-800">{{ item.classe_abc }} / {{ item.risco_ruptura }}</span>
+                                    </td>
                                     <td class="text-center">
                                         <div :class="['px-3 py-1 rounded-full text-[11px] font-black inline-block', getStatusColor(item.dias)]">
                                             {{ item.dias }} DIAS
@@ -341,6 +355,58 @@
                     </div>
                 </section>
 
+                <!-- TAB: TENDÊNCIAS E ALERTAS -->
+                <section v-if="currentTab === 'tendencias'" class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="glass-card rounded-3xl overflow-hidden">
+                            <div class="p-4 border-b border-slate-800 text-xs font-black tracking-widest text-slate-400">ALERTAS AUTOMÁTICOS</div>
+                            <div class="max-h-72 overflow-y-auto custom-scrollbar">
+                                <table class="w-full text-left text-xs">
+                                    <thead>
+                                        <tr>
+                                            <th>Código</th>
+                                            <th>Dias</th>
+                                            <th>Saldo</th>
+                                            <th>Ponto Dinâmico</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="a in alertas" :key="`${a.codigo_ax}-${a.dias}`">
+                                            <td>{{ a.codigo_ax }}</td>
+                                            <td class="font-bold text-red-400">{{ a.dias }}</td>
+                                            <td>{{ a.saldo }}</td>
+                                            <td>{{ a.ponto_pedido_dinamico }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="glass-card rounded-3xl overflow-hidden">
+                            <div class="p-4 border-b border-slate-800 text-xs font-black tracking-widest text-slate-400">COMPARATIVO MULTI-ANO / DESVIO</div>
+                            <div class="max-h-72 overflow-y-auto custom-scrollbar">
+                                <table class="w-full text-left text-xs">
+                                    <thead>
+                                        <tr>
+                                            <th>Código</th>
+                                            <th>Ano</th>
+                                            <th>Total Ano</th>
+                                            <th>Desvio YoY</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="t in tendencias" :key="`${t.codigo_ax}-${t.ano}`">
+                                            <td>{{ t.codigo_ax }}</td>
+                                            <td>{{ t.ano }}</td>
+                                            <td>{{ Number(t.total_ano || 0).toLocaleString() }}</td>
+                                            <td :class="Number(t.desvio_anual_percent) >= 0 ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'">{{ t.desvio_anual_percent }}%</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
             </div>
 
             <!-- LOADING OVERLAY -->
@@ -365,7 +431,7 @@
         </main>
     </div>
 
-    <!-- BACKEND MOCK / INTEGRATION -->
+    <!-- BACKEND INTEGRATION -->
     <script>
         const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
 
@@ -376,53 +442,27 @@
                 const toast = ref(false);
                 const toastMsg = ref('');
                 const uploadProgress = ref(0);
-                
+
                 const form = ref({ codigo: '', qtd: null });
-                const histFilter = ref({ insumo: '', ano: '2026' });
-                
+                const histFilter = ref({ insumo: '', ano: String(new Date().getFullYear()) });
+
                 const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
-                // DADOS REAIS / CALCULADOS
-                const insumos = ref([
-                    { codigo_ax: '43860', descricao: 'AMIDO DE MILHO REGULAR', ponto: 50000 },
-                    { codigo_ax: '121408', descricao: 'COLA PVA BRANCA PARA RESINADOS', ponto: 300 },
-                    { codigo_ax: '43870', descricao: 'SODA CAUSTICA', ponto: 2000 },
-                    { codigo_ax: '43990', descricao: 'FITA POLIPROPILENO', ponto: 200 }
-                ]);
+                const insumos = ref([]);
+                const projesp = ref([]);
+                const movimentos = ref([]);
+                const historicoRaw = ref([]);
+                const tendencias = ref([]);
+                const alertas = ref([]);
+                const stats = ref({ mediaDiaria: '0.00', mediaMensal: '0', itensRessuprir: 0, totalAnual: '0' });
 
-                const projesp = ref([
-                    { uuid: 1, codigo_ax: '43860', descricao: 'AMIDO DE MILHO REGULAR', saldo: 85000, media_dia: 2500, dias: 34, data_prevista: '12/04/2026' },
-                    { uuid: 2, codigo_ax: '121408', descricao: 'COLA PVA BRANCA PARA RESINADOS', saldo: 1200, media_dia: 300, dias: 4, data_prevista: '13/03/2026' },
-                    { uuid: 3, codigo_ax: '43870', descricao: 'SODA CAUSTICA', saldo: 2000, media_dia: 80, dias: 25, data_prevista: '03/04/2026' },
-                    { uuid: 4, codigo_ax: '43990', descricao: 'FITA POLIPROPILENO', saldo: 150, media_dia: 30, dias: 5, data_prevista: '14/03/2026' }
-                ]);
-
-                const movimentos = ref([
-                    { uuid: 101, data: '11/03/2026', codigo_ax: '117573', descricao: 'COLA PVA BRANCA RESINADA', ponto: 300, anterior: 1200, saida: 50, atual: 1150 },
-                    { uuid: 102, data: '12/03/2026', codigo_ax: '121408', descricao: 'COLA PVA BRANCA PARA RESINADOS', ponto: 300, anterior: 950, saida: 100, atual: 850 },
-                    { uuid: 103, data: '09/03/2026', codigo_ax: '43860', descricao: 'AMIDO DE MILHO REGULAR', ponto: 50000, anterior: 100000, saida: 5000, atual: 95000 }
-                ]);
-
-                const historicoRaw = ref([
-                    { codigo: '43860', descricao: 'AMIDO DE MILHO', ano: '2026', meses: [85000, 82000, 80000, 75000, 0, 0, 0, 0, 0, 0, 0, 0], media: 80500 },
-                    { codigo: '121408', descricao: 'COLA PVA', ano: '2026', meses: [1200, 1100, 1050, 900, 0, 0, 0, 0, 0, 0, 0, 0], media: 1060 },
-                    { codigo: '43860', descricao: 'AMIDO DE MILHO', ano: '2025', meses: [95000, 92000, 94000, 91000, 88000, 85000, 87000, 84000, 82000, 80000, 78000, 75000], media: 86000 }
-                ]);
-
-                const stats = ref({
-                    mediaDiaria: '2.84k',
-                    mediaMensal: '85.2k',
-                    itensRessuprir: 12,
-                    totalAnual: '1.02M'
-                });
-
-                // COMPUTED
                 const tabTitle = computed(() => {
                     const map = {
                         corrente: 'Dashboard de Operações Correntes',
                         historico: 'Análise de Histórico Mensal',
                         movimentacao: 'Fluxo de Movimentação Real-time',
-                        lancamentos: 'Painel de Inserção de Dados'
+                        lancamentos: 'Painel de Inserção de Dados',
+                        tendencias: 'Tendências Avançadas e Alertas'
                     };
                     return map[currentTab.value];
                 });
@@ -435,20 +475,10 @@
                     });
                 });
 
-                // METHODS
                 const getStatusColor = (dias) => {
                     if (dias <= 7) return 'bg-red-500/20 text-red-500';
                     if (dias <= 15) return 'bg-amber-500/20 text-amber-500';
                     return 'bg-emerald-500/20 text-emerald-500';
-                };
-
-                const fetchData = () => {
-                    loading.value = true;
-                    // Simula google.script.run.getDashboardData()
-                    setTimeout(() => {
-                        loading.value = false;
-                        showToast('Dados sincronizados com o Google Sheets');
-                    }, 1200);
                 };
 
                 const showToast = (msg) => {
@@ -457,31 +487,126 @@
                     setTimeout(() => toast.value = false, 3000);
                 };
 
-                const submitManual = () => {
-                    if (!form.value.codigo || !form.value.qtd) return;
+                const handleFailure = (error, fallbackMsg) => {
+                    loading.value = false;
+                    const message = (error && error.message) ? error.message : String(error || fallbackMsg);
+                    showToast(message || fallbackMsg);
+                };
+
+                const applyDashboardData = (payload) => {
+                    if (!payload || payload.error) {
+                        throw new Error(payload?.error || 'Falha ao carregar dashboard.');
+                    }
+
+                    insumos.value = Array.isArray(payload.insumos) ? payload.insumos : [];
+                    projesp.value = Array.isArray(payload.projesp) ? payload.projesp : [];
+                    movimentos.value = Array.isArray(payload.movimentacoes) ? payload.movimentacoes : [];
+                    historicoRaw.value = Array.isArray(payload.historico) ? payload.historico : [];
+                    tendencias.value = Array.isArray(payload.tendencias) ? payload.tendencias : [];
+                    alertas.value = Array.isArray(payload.alertas) ? payload.alertas : [];
+                    stats.value = payload.stats || { mediaDiaria: '0.00', mediaMensal: '0', itensRessuprir: 0, totalAnual: '0' };
+
+                    if (historicoRaw.value.length > 0 && !historicoRaw.value.some(h => h.ano === histFilter.value.ano)) {
+                        histFilter.value.ano = historicoRaw.value[0].ano;
+                    }
+                };
+
+                const fetchData = () => {
                     loading.value = true;
-                    setTimeout(() => {
+
+                    if (typeof google === 'undefined' || !google.script || !google.script.run) {
                         loading.value = false;
-                        showToast(`Lançamento de ${form.value.qtd} un para ${form.value.codigo} efetuado.`);
-                        form.value = { codigo: '', qtd: null };
-                        fetchData();
-                    }, 1000);
+                        showToast('Ambiente local sem google.script.run. Publique pelo GAS para usar dados reais.');
+                        return;
+                    }
+
+                    google.script.run
+                        .withSuccessHandler((payload) => {
+                            try {
+                                applyDashboardData(payload);
+                                loading.value = false;
+                                showToast('Dados sincronizados com o Google Sheets.');
+                            } catch (err) {
+                                handleFailure(err, 'Falha ao aplicar dados do dashboard.');
+                            }
+                        })
+                        .withFailureHandler((err) => handleFailure(err, 'Erro ao consultar backend.'))
+                        .getDashboardData();
+                };
+
+                const submitManual = () => {
+                    const codigo = String(form.value.codigo || '').trim();
+                    const qtd = Number(form.value.qtd);
+
+                    if (!codigo) {
+                        showToast('Informe o código AX do insumo.');
+                        return;
+                    }
+
+                    if (!Number.isFinite(qtd) || qtd <= 0) {
+                        showToast('A quantidade deve ser numérica e maior que zero.');
+                        return;
+                    }
+
+                    if (typeof google === 'undefined' || !google.script || !google.script.run) {
+                        showToast('Ambiente local sem google.script.run.');
+                        return;
+                    }
+
+                    loading.value = true;
+                    google.script.run
+                        .withSuccessHandler((resp) => {
+                            loading.value = false;
+                            showToast(resp?.message || `Saída registrada para ${codigo}.`);
+                            form.value = { codigo: '', qtd: null };
+                            fetchData();
+                        })
+                        .withFailureHandler((err) => handleFailure(err, 'Erro ao registrar saída.'))
+                        .registrarSaida(codigo, qtd);
                 };
 
                 const handleBulkUpload = (e) => {
                     const file = e.target.files[0];
                     if (!file) return;
+
+                    if (typeof google === 'undefined' || !google.script || !google.script.run) {
+                        showToast('Ambiente local sem google.script.run.');
+                        return;
+                    }
+
+                    const reader = new FileReader();
                     loading.value = true;
-                    uploadProgress.value = 0;
-                    
-                    const interval = setInterval(() => {
-                        uploadProgress.value += 20;
-                        if (uploadProgress.value >= 100) {
-                            clearInterval(interval);
-                            loading.value = false;
-                            showToast('Carga em massa processada com sucesso.');
+                    uploadProgress.value = 10;
+
+                    reader.onload = () => {
+                        try {
+                            const text = String(reader.result || '');
+                            const lines = text.split(/\r?\n/).filter(Boolean);
+                            const rows = [];
+
+                            for (let i = 1; i < lines.length; i++) {
+                                const parts = lines[i].split(',');
+                                rows.push({ codigo_ax: (parts[0] || '').trim(), quantidade: Number(parts[1] || 0) });
+                            }
+
+                            uploadProgress.value = 60;
+
+                            google.script.run
+                                .withSuccessHandler((resp) => {
+                                    uploadProgress.value = 100;
+                                    loading.value = false;
+                                    showToast(`Carga processada: ${resp.totalInserido} inseridos, ${resp.totalRejeitado} rejeitados.`);
+                                    fetchData();
+                                })
+                                .withFailureHandler((err) => handleFailure(err, 'Erro ao processar carga em massa.'))
+                                .processBulkInsert(rows);
+                        } catch (err) {
+                            handleFailure(err, 'Falha ao interpretar CSV.');
                         }
-                    }, 400);
+                    };
+
+                    reader.onerror = () => handleFailure(new Error('Não foi possível ler o arquivo.'), 'Erro de leitura de arquivo.');
+                    reader.readAsText(file, 'utf-8');
                 };
 
                 onMounted(() => {
@@ -495,29 +620,12 @@
 
                 return {
                     currentTab, loading, toast, toastMsg, tabTitle, stats,
-                    insumos, projesp, movimentos, meses, histFilter, filteredHistorico,
+                    insumos, projesp, movimentos, meses, histFilter, filteredHistorico, tendencias, alertas,
                     form, uploadProgress,
                     getStatusColor, fetchData, submitManual, handleBulkUpload
                 };
             }
         }).mount('#app');
-
-        /** * CÉREBRO BACKEND (GAS) - Lógica de Sugestão
-         * * function getDashboardData() {
-         * const ss = SpreadsheetApp.getActiveSpreadsheet();
-         * const sheetInsumos = ss.getSheetByName('insumos');
-         * const sheetMov = ss.getSheetByName('movimentacao_apurada');
-         * * // 1. Calcular Média de Saída Real (últimos 90 dias)
-         * // 2. Pivotar Histórico para a aba de Posicionamento
-         * // 3. Gerar Projeção: dias_cobertura = saldo_atual / media_saida_diaria
-         * // 4. Retornar JSON para o Vue
-         * }
-         * * function processBulkInsert(payload) {
-         * // Recebe array de objetos {codigo_ax, quantidade}
-         * // Gera novo Snapshot para cada item
-         * // Trigger de Re-apuração automática
-         * }
-         */
     </script>
 </body>
 </html>

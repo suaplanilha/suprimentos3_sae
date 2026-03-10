@@ -6,14 +6,14 @@
 const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'suprimentos-sae';
 const ALLOW_NEGATIVE_STOCK = false;
 const APP_TIMEZONE = Session.getScriptTimeZone() || 'America/Sao_Paulo';
-const AUDIT_SHEET_NAME = 'event_log';
+const AUDIT_SHEET_NAME = 'logs_execucao';
 const STAGING_SHEET_NAME = 'staging_movimentacao';
 
 const REQUIRED_HEADERS = {
   insumos: ['uuid', 'codigo_ax', 'descricao', 'ponto_ressuprimento'],
-  estoque_snapshot: ['uuid', 'insumo_id', 'codigo_ax', 'quantidade_atual', 'origem_tipo', 'origem_canal', 'snapshot_anterior_id', 'status_apuracao', 'criado_em', 'atualizado_em'],
+  estoque_snapshot: ['uuid', 'insumo_id', 'codigo_ax', 'quantidade_atual', 'tipo_contexto', 'origem_lancamento', 'snapshot_anterior_id', 'status_apuracao', 'criado_em'],
   movimentacao_apurada: ['uuid', 'codigo_ax', 'tipo_movimento', 'quantidade_movimento', 'criado_em'],
-  historico_posicao_estoque_mensal: ['uuid', 'codigo_ax', 'competencia', 'quantidade_posicao']
+  historico_posicao_estoque_mensal: ['uuid', 'insumo_id', 'codigo_ax', 'competencia', 'quantidade_posicao', 'tipo_registro', 'origem', 'observacao', 'criado_em']
 };
 
 function doGet() {
@@ -102,7 +102,7 @@ function registrarSaida(codigo_ax, quantidade) {
   return _runWithDocumentLock_('registrarSaida', function () {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     _assertSchema(ss);
-    return _registrarSaidaSemLock_(ss, codigo_ax, quantidade, 'SAIDA_MANUAL', 'WEBAPP', 'Lançamento via App');
+    return _registrarSaidaSemLock_(ss, codigo_ax, quantidade, 'FECHAMENTO_DIARIO', 'WEBAPP', 'Lançamento via App');
   });
 }
 
@@ -153,7 +153,7 @@ function processBulkInsert(payload) {
       }
 
       try {
-        _registrarSaidaSemLock_(ss, codigo, qtd, 'SAIDA_BULK', 'WEBAPP_BULK', 'Carga em massa');
+        _registrarSaidaSemLock_(ss, codigo, qtd, 'FECHAMENTO_DIARIO', 'WEBAPP_BULK', 'Carga em massa');
         inserted++;
       } catch (e) {
         rejeicoes.push({ linha: idx + 1, codigo_ax: codigo, motivo: e.toString() });
@@ -200,11 +200,14 @@ function executarFechamentoDiario() {
       const snap = snapshotsMaisRecentes[codigo];
       return [
         Utilities.getUuid(),
+        snap.insumo_id || '',
         codigo,
         competencia,
         parseFloat(snap.quantidade_atual || 0),
-        new Date().toISOString(),
-        'AUTO_FECHAMENTO_DIARIO'
+        'FECHAMENTO_DIARIO',
+        'webapp',
+        'Consolidado automaticamente no fechamento diário.',
+        new Date().toISOString()
       ];
     });
 
@@ -351,7 +354,14 @@ function _logEvent(level, context, payload) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = _getOrCreateAuditSheet_(ss);
-    sheet.appendRow([record.timestamp, record.app_id, record.level, record.context, record.user, JSON.stringify(record.payload)]);
+    sheet.appendRow([
+      Utilities.getUuid(),
+      record.context,
+      record.level,
+      JSON.stringify({ app_id: record.app_id, payload: record.payload }),
+      record.user,
+      record.timestamp
+    ]);
   } catch (e) {
     console.error(`Falha ao persistir log em planilha: ${e}`);
   }
@@ -361,7 +371,7 @@ function _getOrCreateAuditSheet_(ss) {
   let sheet = ss.getSheetByName(AUDIT_SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(AUDIT_SHEET_NAME);
-    sheet.appendRow(['timestamp', 'app_id', 'level', 'context', 'user_email', 'payload_json']);
+    sheet.appendRow(['uuid', 'processo', 'status', 'detalhes', 'executado_por', 'executado_em']);
   }
   return sheet;
 }
@@ -428,14 +438,14 @@ function _atualizarStatusApuracaoSnapshots_(sheetSnap, snapshots, statusOrigem, 
   const values = range.getValues();
   const headers = values[0].map(h => String(h || '').trim());
   const idxStatus = headers.indexOf('status_apuracao');
-  const idxUpdated = headers.indexOf('atualizado_em');
-  if (idxStatus === -1 || idxUpdated === -1) throw new Error('Aba estoque_snapshot sem colunas status_apuracao/atualizado_em.');
+  const idxCreated = headers.indexOf('criado_em');
+  if (idxStatus === -1) throw new Error('Aba estoque_snapshot sem coluna status_apuracao.');
 
   let atualizados = 0;
   for (let i = 1; i < values.length; i++) {
     if (String(values[i][idxStatus] || '').toUpperCase() === statusOrigem) {
       values[i][idxStatus] = statusDestino;
-      values[i][idxUpdated] = new Date().toISOString();
+      if (idxCreated !== -1) values[i][idxCreated] = values[i][idxCreated] || new Date().toISOString();
       atualizados++;
     }
   }
@@ -471,8 +481,8 @@ function _getLatestSnapshotsByCodigo(snaps) {
 }
 
 function _isSnapshotMaisRecente(a, b) {
-  const dataA = new Date(a.atualizado_em || a.criado_em || 0).getTime() || 0;
-  const dataB = new Date(b.atualizado_em || b.criado_em || 0).getTime() || 0;
+  const dataA = new Date(a.data_hora_lancamento_iso || a.criado_em || 0).getTime() || 0;
+  const dataB = new Date(b.data_hora_lancamento_iso || b.criado_em || 0).getTime() || 0;
   if (dataA !== dataB) return dataA > dataB;
   return String(a.uuid || '') > String(b.uuid || '');
 }
@@ -668,7 +678,9 @@ function _formatarMovimentacoes(movRaw, snapshotsAtuais, insumosByCodigo) {
       const snapshotAtual = snapshotsAtuais[codigo] || {};
       const saida = parseFloat(m.quantidade_movimento || 0);
       const saldoAtual = parseFloat(snapshotAtual.quantidade_atual || 0);
-      const saldoAnterior = m.saldo_anterior !== undefined ? parseFloat(m.saldo_anterior || 0) : saldoAtual + saida;
+      const saldoAnterior = m.estoque_anterior !== undefined
+        ? parseFloat(m.estoque_anterior || 0)
+        : (m.saldo_anterior !== undefined ? parseFloat(m.saldo_anterior || 0) : saldoAtual + saida);
 
       return {
         uuid: m.uuid || Utilities.getUuid(),
